@@ -52,8 +52,38 @@ buildscript {
 }
 
 apply plugin: "org.shipkit.shipkit-auto-version"
-apply plugin: "org.shipkit.shipkit-changelog"
+// Changelog plugin removed to avoid generateChangelog task and git branch assumptions
+// apply plugin: "org.shipkit.shipkit-changelog"
 apply plugin: "org.shipkit.shipkit-github-release"
+apply plugin: "io.github.gradle-nexus.publish-plugin"
+
+// Configure githubRelease without changelog generation
+tasks.named("githubRelease") {
+  repository = "linkedin/iceberg"
+  changelog = file("${buildDir}/CHANGELOG.md")
+  githubToken = System.getenv("GITHUB_TOKEN")
+  newTagRevision = System.getenv("GITHUB_SHA")
+  doFirst {
+    changelog.parentFile.mkdirs()
+    if (!changelog.exists()) {
+      changelog.text = "Release ${project.version}"
+    }
+  }
+}
+
+// Configure Sonatype publishing so tasks are available
+nexusPublishing {
+  repositories {
+    sonatype {
+      username = System.getenv("SONATYPE_USER") ?: ""
+      password = System.getenv("SONATYPE_PWD") ?: ""
+      nexusUrl.set(uri("https://ossrh-staging-api.central.sonatype.com/service/local/"))
+      // nexusUrl.set(uri("https://s01.oss.sonatype.org/service/local/"))
+      snapshotRepositoryUrl.set(uri("https://central.sonatype.com/repository/maven-snapshots/"))
+      // snapshotRepositoryUrl.set(uri("https://s01.oss.sonatype.org/content/repositories/snapshots/"))
+    }
+  }
+}
 
 String scalaVersion = System.getProperty("scalaVersion") != null ? System.getProperty("scalaVersion") : System.getProperty("defaultScalaVersion")
 String sparkVersionsString = System.getProperty("sparkVersions") != null ? System.getProperty("sparkVersions") : System.getProperty("defaultSparkVersions")
