@@ -23,6 +23,7 @@ import static org.apache.spark.sql.functions.col;
 import static org.apache.spark.sql.functions.lit;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
@@ -36,6 +37,7 @@ import org.apache.iceberg.StructLike;
 import org.apache.iceberg.Table;
 import org.apache.iceberg.actions.SizeBasedPositionDeletesRewriter;
 import org.apache.iceberg.relocated.com.google.common.base.Preconditions;
+import org.apache.iceberg.relocated.com.google.common.collect.ImmutableSet;
 import org.apache.iceberg.spark.PositionDeletesRewriteCoordinator;
 import org.apache.iceberg.spark.ScanTaskSetManager;
 import org.apache.iceberg.spark.SparkReadOptions;
@@ -46,6 +48,7 @@ import org.apache.iceberg.spark.SparkWriteOptions;
 import org.apache.iceberg.types.Type;
 import org.apache.iceberg.types.Types;
 import org.apache.spark.sql.Column;
+import org.apache.spark.sql.DataFrameWriter;
 import org.apache.spark.sql.Dataset;
 import org.apache.spark.sql.Row;
 import org.apache.spark.sql.SparkSession;
@@ -59,6 +62,13 @@ class SparkBinPackPositionDeletesRewriter extends SizeBasedPositionDeletesRewrit
   private final PositionDeletesRewriteCoordinator coordinator =
       PositionDeletesRewriteCoordinator.get();
 
+  // Per-call override for the delete file replication factor, e.g. passed via
+  // CALL system.rewrite_position_delete_files(table => 't', options => map('delete-file-replication', '5')).
+  // Left null when not explicitly set so that SparkWriteConf can fall back to the
+  // spark.sql.iceberg.delete-file-replication session config, the write.delete-file-replication
+  // table property, and finally its own default, in that order.
+  private String deleteFileReplication;
+
   SparkBinPackPositionDeletesRewriter(SparkSession spark, Table table) {
     super(table);
     // Disable Adaptive Query Execution as this may change the output partitioning of our write
@@ -69,6 +79,20 @@ class SparkBinPackPositionDeletesRewriter extends SizeBasedPositionDeletesRewrit
   @Override
   public String description() {
     return "BIN-PACK";
+  }
+
+  @Override
+  public Set<String> validOptions() {
+    return ImmutableSet.<String>builder()
+        .addAll(super.validOptions())
+        .add(SparkWriteOptions.DELETE_FILE_REPLICATION)
+        .build();
+  }
+
+  @Override
+  public void init(Map<String, String> options) {
+    super.init(options);
+    this.deleteFileReplication = options.get(SparkWriteOptions.DELETE_FILE_REPLICATION);
   }
 
   @Override
@@ -111,14 +135,22 @@ class SparkBinPackPositionDeletesRewriter extends SizeBasedPositionDeletesRewrit
     Dataset<Row> validDeletes = posDeletes.join(dataFiles, joinCond, "leftsemi");
 
     // write the packed deletes into new files where each split becomes a new file
-    validDeletes
-        .sortWithinPartitions("file_path", "pos")
-        .write()
-        .format("iceberg")
-        .option(SparkWriteOptions.REWRITTEN_FILE_SCAN_TASK_SET_ID, groupId)
-        .option(SparkWriteOptions.TARGET_DELETE_FILE_SIZE_BYTES, writeMaxFileSize())
-        .mode("append")
-        .save(groupId);
+    DataFrameWriter<Row> writer =
+        validDeletes
+            .sortWithinPartitions("file_path", "pos")
+            .write()
+            .format("iceberg")
+            .option(SparkWriteOptions.REWRITTEN_FILE_SCAN_TASK_SET_ID, groupId)
+            .option(SparkWriteOptions.TARGET_DELETE_FILE_SIZE_BYTES, writeMaxFileSize())
+            .mode("append");
+
+    // only override when the caller explicitly passed delete-file-replication in the action's
+    // options map; otherwise let SparkWriteConf resolve it from session/table config/defaults
+    if (deleteFileReplication != null) {
+      writer = writer.option(SparkWriteOptions.DELETE_FILE_REPLICATION, deleteFileReplication);
+    }
+
+    writer.save(groupId);
   }
 
   /** Returns entries of {@link DataFilesTable} of specified partition */
