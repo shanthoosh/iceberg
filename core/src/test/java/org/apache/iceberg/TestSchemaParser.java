@@ -95,4 +95,21 @@ public class TestSchemaParser {
     assertThat(serialized.findField("col_with_default").writeDefault())
         .isEqualTo(defaultValue.value());
   }
+
+  @Test
+  public void testExplicitNullDefaultsParseAsNoDefault() {
+    // some clients serialize absent defaults as explicit JSON nulls; both forms mean "no default"
+    String schemaJson =
+        "{\"type\": \"struct\", \"schema-id\": 0, \"fields\": ["
+            + "{\"id\": 1, \"name\": \"id\", \"required\": true, \"type\": \"long\", "
+            + "\"initial-default\": null, \"write-default\": null},"
+            + "{\"id\": 2, \"name\": \"data\", \"required\": false, \"type\": \"string\", "
+            + "\"initial-default\": null}]}";
+
+    Schema schema = SchemaParser.fromJson(schemaJson);
+    assertThat(schema.findField("id").initialDefault()).isNull();
+    assertThat(schema.findField("id").writeDefault()).isNull();
+    assertThat(schema.findField("data").initialDefault()).isNull();
+    assertThat(schema.findField("data").writeDefault()).isNull();
+  }
 }

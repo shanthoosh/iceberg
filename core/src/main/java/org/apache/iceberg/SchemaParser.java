@@ -234,7 +234,8 @@ public class SchemaParser {
   }
 
   private static Literal<?> defaultFromJson(String defaultField, Type type, JsonNode json) {
-    if (json.has(defaultField)) {
+    // an explicit JSON null (written by some clients) means the same as an absent key: no default
+    if (json.has(defaultField) && !json.get(defaultField).isNull()) {
       Object value = SingleValueParser.fromJson(type, json.get(defaultField));
       return Expressions.lit(value);
     }
