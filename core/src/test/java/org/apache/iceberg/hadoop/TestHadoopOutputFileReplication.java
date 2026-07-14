@@ -22,6 +22,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import java.io.File;
 import java.io.IOException;
+import java.util.Map;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
@@ -174,5 +175,34 @@ public class TestHadoopOutputFileReplication {
     }
 
     assertThat(fs.exists(testPath)).isTrue();
+  }
+
+  @Test
+  public void testReplicationResolutionFromProperties() {
+    Path testPath = new Path(tempDir.toURI().toString(), "test-resolution.txt");
+
+    HadoopOutputFile withReplication =
+        (HadoopOutputFile)
+            HadoopOutputFile.fromPath(
+                testPath, conf, ImmutableMap.of(OutputFileFactory.FILE_REPLICATION_FACTOR, "5"));
+    assertThat(withReplication.replication()).isEqualTo((short) 5);
+
+    // missing or unparseable properties must leave replication unset so that streams
+    // are created with the filesystem default instead of a hardcoded value
+    HadoopOutputFile withoutProperty =
+        (HadoopOutputFile) HadoopOutputFile.fromPath(testPath, conf, ImmutableMap.of());
+    assertThat(withoutProperty.replication()).isLessThanOrEqualTo((short) 0);
+
+    HadoopOutputFile withInvalidProperty =
+        (HadoopOutputFile)
+            HadoopOutputFile.fromPath(
+                testPath,
+                conf,
+                ImmutableMap.of(OutputFileFactory.FILE_REPLICATION_FACTOR, "invalid"));
+    assertThat(withInvalidProperty.replication()).isLessThanOrEqualTo((short) 0);
+
+    HadoopOutputFile withNullProperties =
+        (HadoopOutputFile) HadoopOutputFile.fromPath(testPath, conf, (Map<String, String>) null);
+    assertThat(withNullProperties.replication()).isLessThanOrEqualTo((short) 0);
   }
 }

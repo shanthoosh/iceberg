@@ -567,8 +567,10 @@ public class TestSparkWriteConf extends TestBaseWithCatalog {
     Table table = validationCatalog.loadTable(tableIdent);
     SparkWriteConf writeConf = new SparkWriteConf(spark, table, ImmutableMap.of());
 
-    // Default replication factor should be 3 as per DEFAULT_DELETE_FILE_REPLICATION
-    assertThat(writeConf.deleteFileReplication()).isEqualTo((short) 3);
+    // when nothing is configured, the sentinel leaves replication to the filesystem default
+    assertThat(writeConf.deleteFileReplication())
+        .isEqualTo(SparkWriteOptions.DEFAULT_DELETE_FILE_REPLICATION)
+        .isLessThanOrEqualTo((short) 0);
   }
 
   @TestTemplate

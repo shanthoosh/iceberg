@@ -40,7 +40,8 @@ import org.slf4j.LoggerFactory;
 public class HadoopOutputFile implements OutputFile, NativelyEncryptedFile {
 
   private static final Logger LOG = LoggerFactory.getLogger(HadoopOutputFile.class);
-  private static final short DEFAULT_REPLICATION_FACTOR = 3;
+  // sentinel for "not configured": streams are created with the filesystem default replication
+  private static final short REPLICATION_UNSET = -1;
   private final FileSystem fs;
   private final Path path;
   private final Configuration conf;
@@ -63,7 +64,7 @@ public class HadoopOutputFile implements OutputFile, NativelyEncryptedFile {
   }
 
   public static OutputFile fromPath(Path path, Configuration conf, Map<String, String> properties) {
-    short replicationFactor = DEFAULT_REPLICATION_FACTOR;
+    short replicationFactor = REPLICATION_UNSET;
     if (properties != null) {
       String replicationFactorAsString = properties.get(OutputFileFactory.FILE_REPLICATION_FACTOR);
       if (replicationFactorAsString != null) {
@@ -71,9 +72,8 @@ public class HadoopOutputFile implements OutputFile, NativelyEncryptedFile {
           replicationFactor = Short.parseShort(replicationFactorAsString);
         } catch (NumberFormatException e) {
           LOG.warn(
-              "Failed to parse replication factor: {}, defaulting to {}",
+              "Failed to parse replication factor: {}, using the filesystem default",
               replicationFactorAsString,
-              DEFAULT_REPLICATION_FACTOR,
               e);
         }
       }
@@ -91,7 +91,7 @@ public class HadoopOutputFile implements OutputFile, NativelyEncryptedFile {
   }
 
   public static OutputFile fromPath(Path path, FileSystem fs, Configuration conf) {
-    return new HadoopOutputFile(fs, path, conf, (short) -1);
+    return new HadoopOutputFile(fs, path, conf, REPLICATION_UNSET);
   }
 
   private HadoopOutputFile(FileSystem fs, Path path, Configuration conf, short replication) {

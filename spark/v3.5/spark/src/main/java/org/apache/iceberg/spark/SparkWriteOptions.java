@@ -23,7 +23,8 @@ public class SparkWriteOptions {
   private SparkWriteOptions() {}
 
   public static final String DELETE_FILE_REPLICATION = "delete-file-replication";
-  public static final short DEFAULT_DELETE_FILE_REPLICATION = 3;
+  // Sentinel for "not configured": delete files inherit the filesystem default replication
+  public static final short DEFAULT_DELETE_FILE_REPLICATION = -1;
 
   // Fileformat for write operations(default: Table write.format.default )
   public static final String WRITE_FORMAT = "write-format";
